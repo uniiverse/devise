@@ -48,9 +48,14 @@ module Devise
       # Generate a new remember token and save the record without validations
       # unless remember_across_browsers is true and the user already has a valid token.
       def remember_me!(extend_period=false)
-        self.remember_token = self.class.remember_token if generate_remember_token?
-        self.remember_created_at = Time.now.utc if generate_remember_timestamp?(extend_period)
-        save(:validate => false)
+        if defined?(Mongoid) && is_a?(Mongoid::Document)
+          set(:remember_token, self.class.remember_token) if generate_remember_token?
+          set(:remember_created_at, Time.now.utc) if generate_remember_timestamp?(extend_period)
+        else
+          self.remember_token = self.class.remember_token if generate_remember_token?
+          self.remember_created_at = Time.now.utc if generate_remember_timestamp?(extend_period)
+          save(:validate => false)
+        end
       end
 
       # If the record is persisted, remove the remember token (but only if
