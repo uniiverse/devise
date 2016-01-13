@@ -18,14 +18,14 @@ module Devise
       def update_tracked_fields!(request)
         if defined?(Mongoid) && is_a?(Mongoid::Document)
           old_current, new_current = self.current_sign_in_at, Time.now.utc
-          set :last_sign_in_at,     old_current || new_current
-          set :current_sign_in_at,  new_current
+          set last_sign_in_at:     old_current || new_current
+          set current_sign_in_at:  new_current
 
           old_current, new_current = self.current_sign_in_ip, request.remote_ip
-          set :last_sign_in_ip,     old_current || new_current
-          set :current_sign_in_ip,  new_current
+          set last_sign_in_ip:     old_current || new_current
+          set current_sign_in_ip:  new_current
 
-          set :sign_in_count, (sign_in_count || 0) + 1
+          set sign_in_count: (sign_in_count || 0) + 1
 
         else
           old_current, new_current = self.current_sign_in_at, Time.now.utc

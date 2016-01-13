@@ -3,7 +3,7 @@
 Warden::Manager.after_set_user :except => :fetch do |record, warden, options|
   if record.respond_to?(:failed_attempts) && warden.authenticated?(options[:scope])
     if defined?(Mongoid) && record.is_a?(Mongoid::Document)
-      record.set(:failed_attempts, 0)
+      record.set failed_attempts: 0
     else
       record.update_attribute(:failed_attempts, 0)
     end
