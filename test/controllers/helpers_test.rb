@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 require 'test_helper'
 require 'ostruct'
 
-class ControllerAuthenticatableTest < ActionController::TestCase
+class ControllerAuthenticatableTest < Devise::ControllerTestCase
   tests ApplicationController
 
   def setup
@@ -25,6 +27,13 @@ class ControllerAuthenticatableTest < ActionController::TestCase
     @controller.signed_in?
   end
 
+  test 'proxy [group]_signed_in? to authenticate? with each scope' do
+    [:user, :admin].each do |scope|
+      @mock_warden.expects(:authenticate?).with(scope: scope).returns(false)
+    end
+    @controller.commenter_signed_in?
+  end
+
   test 'proxy current_user to authenticate with user scope' do
     @mock_warden.expects(:authenticate).with(scope: :user)
     @controller.current_user
@@ -33,6 +42,20 @@ class ControllerAuthenticatableTest < ActionController::TestCase
   test 'proxy current_admin to authenticate with admin scope' do
     @mock_warden.expects(:authenticate).with(scope: :admin)
     @controller.current_admin
+  end
+
+  test 'proxy current_[group] to authenticate with each scope' do
+    [:user, :admin].each do |scope|
+      @mock_warden.expects(:authenticate).with(scope: scope).returns(nil)
+    end
+    @controller.current_commenter
+  end
+
+  test 'proxy current_[plural_group] to authenticate with each scope' do
+    [:user, :admin].each do |scope|
+      @mock_warden.expects(:authenticate).with(scope: scope)
+    end
+    @controller.current_commenters
   end
 
   test 'proxy current_publisher_account to authenticate with namespaced publisher account scope' do
@@ -55,6 +78,14 @@ class ControllerAuthenticatableTest < ActionController::TestCase
     @controller.authenticate_admin!
   end
 
+  test 'proxy authenticate_[group]! to authenticate!? with each scope' do
+    [:user, :admin].each do |scope|
+      @mock_warden.expects(:authenticate!).with(scope: scope)
+      @mock_warden.expects(:authenticate?).with(scope: scope).returns(false)
+    end
+    @controller.authenticate_commenter!
+  end
+
   test 'proxy authenticate_publisher_account! to authenticate with namespaced publisher account scope' do
     @mock_warden.expects(:authenticate!).with(scope: :publisher_account)
     @controller.authenticate_publisher_account!
@@ -67,7 +98,7 @@ class ControllerAuthenticatableTest < ActionController::TestCase
 
   test 'proxy admin_signed_in? to authenticatewith admin scope' do
     @mock_warden.expects(:authenticate).with(scope: :admin)
-    assert_not @controller.admin_signed_in?
+    refute @controller.admin_signed_in?
   end
 
   test 'proxy publisher_account_signed_in? to authenticate with namespaced publisher account scope' do
@@ -121,11 +152,11 @@ class ControllerAuthenticatableTest < ActionController::TestCase
     @controller.sign_in(user, force: true)
   end
 
-  test 'sign in accepts bypass as option' do
+  test 'bypass the sign in' do
     user = User.new
     @mock_warden.expects(:session_serializer).returns(serializer = mock())
     serializer.expects(:store).with(user, :user)
-    @controller.sign_in(user, bypass: true)
+    @controller.bypass_sign_in(user)
   end
 
   test 'sign out clears up any signed in user from all scopes' do
@@ -135,8 +166,8 @@ class ControllerAuthenticatableTest < ActionController::TestCase
     @controller.instance_variable_set(:@current_user, user)
     @controller.instance_variable_set(:@current_admin, user)
     @controller.sign_out
-    assert_equal nil, @controller.instance_variable_get(:@current_user)
-    assert_equal nil, @controller.instance_variable_get(:@current_admin)
+    assert_nil @controller.instance_variable_get(:@current_user)
+    assert_nil @controller.instance_variable_get(:@current_admin)
   end
 
   test 'sign out logs out and clears up any signed in user by scope' do
@@ -146,7 +177,7 @@ class ControllerAuthenticatableTest < ActionController::TestCase
     @mock_warden.expects(:clear_strategies_cache!).with(scope: :user).returns(true)
     @controller.instance_variable_set(:@current_user, user)
     @controller.sign_out(:user)
-    assert_equal nil, @controller.instance_variable_get(:@current_user)
+    assert_nil @controller.instance_variable_get(:@current_user)
   end
 
   test 'sign out accepts a resource as argument' do
@@ -216,6 +247,11 @@ class ControllerAuthenticatableTest < ActionController::TestCase
     assert_equal "/foo?bar=baz", @controller.stored_location_for(:user)
   end
 
+  test 'store location for stores fragments' do
+    @controller.store_location_for(:user, "/foo#bar")
+    assert_equal "/foo#bar", @controller.stored_location_for(:user)
+  end
+
   test 'after sign in path defaults to root path if none by was specified for the given scope' do
     assert_equal root_path, @controller.after_sign_in_path_for(:user)
   end
@@ -276,7 +312,17 @@ class ControllerAuthenticatableTest < ActionController::TestCase
     end
   end
 
+  test 'is_flashing_format? depends on is_navigation_format?' do
+    @controller.expects(:is_navigational_format?).returns(true)
+    assert @controller.is_flashing_format?
+  end
+
+  test 'is_flashing_format? is guarded against flash (middleware) not being loaded' do
+    @controller.request.expects(:respond_to?).with(:flash).returns(false)
+    refute @controller.is_flashing_format?
+  end
+
   test 'is not a devise controller' do
-    assert_not @controller.devise_controller?
+    refute @controller.devise_controller?
   end
 end

@@ -1,4 +1,10 @@
-class CreateTables < ActiveRecord::Migration
+# frozen_string_literal: true
+
+superclass = ActiveRecord::Migration
+# TODO: Inherit from the 5.0 Migration class directly when we drop support for Rails 4.
+superclass = ActiveRecord::Migration[5.0] if superclass.respond_to?(:[])
+
+class CreateTables < superclass
   def self.up
     create_table :users do |t|
       t.string :username
@@ -33,7 +39,7 @@ class CreateTables < ActiveRecord::Migration
       t.string   :unlock_token # Only if unlock strategy is :email or :both
       t.datetime :locked_at
 
-      t.timestamps
+      t.timestamps null: false
     end
 
     create_table :admins do |t|
@@ -60,7 +66,7 @@ class CreateTables < ActiveRecord::Migration
       ## Attribute for testing route blocks
       t.boolean :active, default: false
 
-      t.timestamps
+      t.timestamps null: false
     end
   end
 

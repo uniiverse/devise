@@ -1,6 +1,8 @@
-class AddDeviseTo<%= table_name.camelize %> < ActiveRecord::Migration
+# frozen_string_literal: true
+
+class AddDeviseTo<%= table_name.camelize %> < ActiveRecord::Migration<%= migration_version %>
   def self.up
-    change_table(:<%= table_name %>) do |t|
+    change_table :<%= table_name %> do |t|
 <%= migration_data -%>
 
 <% attributes.each do |attribute| -%>
@@ -8,7 +10,7 @@ class AddDeviseTo<%= table_name.camelize %> < ActiveRecord::Migration
 <% end -%>
 
       # Uncomment below if timestamps were not included in your original model.
-      # t.timestamps
+      # t.timestamps null: false
     end
 
     add_index :<%= table_name %>, :email,                unique: true

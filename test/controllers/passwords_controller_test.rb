@@ -1,18 +1,21 @@
+# frozen_string_literal: true
+
 require 'test_helper'
 
-class PasswordsControllerTest < ActionController::TestCase
+class PasswordsControllerTest < Devise::ControllerTestCase
   tests Devise::PasswordsController
-  include Devise::TestHelpers
+  include Devise::Test::ControllerHelpers
 
   setup do
     request.env["devise.mapping"] = Devise.mappings[:user]
-    @user = create_user.tap(&:confirm!)
+    @user = create_user.tap(&:confirm)
     @raw  = @user.send_reset_password_instructions
   end
 
   def put_update_with_params
-    put :update, "user" => {
-      "reset_password_token" => @raw, "password" => "123456", "password_confirmation" => "123456"
+    put :update, params: { "user" => {
+        "reset_password_token" => @raw, "password" => "1234567", "password_confirmation" => "1234567"
+      }
     }
   end
 
@@ -27,5 +30,10 @@ class PasswordsControllerTest < ActionController::TestCase
 
     put_update_with_params
     assert_redirected_to custom_path
+  end
+
+  test 'calls after_database_authentication callback after sign_in immediately after password update' do
+    User.any_instance.expects :after_database_authentication
+    put_update_with_params
   end
 end

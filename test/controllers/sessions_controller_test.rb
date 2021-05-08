@@ -1,20 +1,23 @@
+# frozen_string_literal: true
+
 require 'test_helper'
 
-class SessionsControllerTest < ActionController::TestCase
+class SessionsControllerTest < Devise::ControllerTestCase
   tests Devise::SessionsController
-  include Devise::TestHelpers
+  include Devise::Test::ControllerHelpers
 
   test "#create doesn't raise unpermitted params when sign in fails" do
     begin
-      subscriber = ActiveSupport::Notifications.subscribe /unpermitted_parameters/ do |name, start, finish, id, payload|
+      subscriber = ActiveSupport::Notifications.subscribe %r{unpermitted_parameters} do |name, start, finish, id, payload|
         flunk "Unpermitted params: #{payload}"
       end
       request.env["devise.mapping"] = Devise.mappings[:user]
       request.session["user_return_to"] = 'foo.bar'
       create_user
-      post :create, user: {
-        email: "wrong@email.com",
-        password: "wrongpassword"
+      post :create, params: { user: {
+          email: "wrong@email.com",
+          password: "wrongpassword"
+        }
       }
       assert_equal 200, @response.status
     ensure
@@ -36,12 +39,12 @@ class SessionsControllerTest < ActionController::TestCase
     request.session["user_return_to"] = 'foo.bar'
 
     user = create_user
-    user.confirm!
-    post :create, user: {
-      email: user.email,
-      password: user.password
+    user.confirm
+    post :create, params: { user: {
+        email: user.email,
+        password: user.password
+      }
     }
-
     assert_nil request.session["user_return_to"]
   end
 
@@ -50,10 +53,11 @@ class SessionsControllerTest < ActionController::TestCase
     request.session["user_return_to"] = 'foo.bar'
 
     user = create_user
-    user.confirm!
-    post :create, format: 'json', user: {
-      email: user.email,
-      password: user.password
+    user.confirm
+    post :create, params: { format: 'json', user: {
+        email: user.email,
+        password: user.password
+      }
     }
 
     assert_equal 'foo.bar', request.session["user_return_to"]
@@ -61,9 +65,10 @@ class SessionsControllerTest < ActionController::TestCase
 
   test "#create doesn't raise exception after Warden authentication fails when TestHelpers included" do
     request.env["devise.mapping"] = Devise.mappings[:user]
-    post :create, user: {
-      email: "nosuchuser@example.com",
-      password: "wevdude"
+    post :create, params: { user: {
+        email: "nosuchuser@example.com",
+        password: "wevdude"
+      }
     }
     assert_equal 200, @response.status
     assert_template "devise/sessions/new"
@@ -72,12 +77,12 @@ class SessionsControllerTest < ActionController::TestCase
   test "#destroy doesn't set the flash if the requested format is not navigational" do
     request.env["devise.mapping"] = Devise.mappings[:user]
     user = create_user
-    user.confirm!
-    post :create, format: 'json', user: {
-      email: user.email,
-      password: user.password
+    user.confirm
+    post :create, params: { format: 'json', user: {
+        email: user.email,
+        password: user.password
+      }
     }
-
     delete :destroy, format: 'json'
     assert flash[:notice].blank?, "flash[:notice] should be blank, not #{flash[:notice].inspect}"
     assert_equal 204, @response.status
@@ -91,7 +96,7 @@ class SessionsControllerTest < ActionController::TestCase
       User.class_eval { attr_protected :email }
 
       begin
-        assert_nothing_raised ActiveModel::MassAssignmentSecurity::Error do
+        assert_nothing_raised do
           get :new, user: { email: "allez viens!" }
         end
       ensure

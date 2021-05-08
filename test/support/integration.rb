@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'action_dispatch/testing/integration'
 
 class ActionDispatch::IntegrationTest
@@ -5,7 +7,7 @@ class ActionDispatch::IntegrationTest
     request.env['warden']
   end
 
-  def create_user(options={})
+  def create_user(options = {})
     @user ||= begin
       user = User.create!(
         username: 'usertest',
@@ -15,42 +17,43 @@ class ActionDispatch::IntegrationTest
         created_at: Time.now.utc
       )
       user.update_attribute(:confirmation_sent_at, options[:confirmation_sent_at]) if options[:confirmation_sent_at]
-      user.confirm! unless options[:confirm] == false
+      user.confirm unless options[:confirm] == false
       user.lock_access! if options[:locked] == true
+      User.validations_performed = false
       user
     end
   end
 
-  def create_admin(options={})
+  def create_admin(options = {})
     @admin ||= begin
       admin = Admin.create!(
         email: options[:email] || 'admin@test.com',
         password: '123456', password_confirmation: '123456',
         active: options[:active]
       )
-      admin.confirm! unless options[:confirm] == false
+      admin.confirm unless options[:confirm] == false
       admin
     end
   end
 
-  def sign_in_as_user(options={}, &block)
+  def sign_in_as_user(options = {}, &block)
     user = create_user(options)
     visit_with_option options[:visit], new_user_session_path
     fill_in 'email', with: options[:email] || 'user@test.com'
     fill_in 'password', with: options[:password] || '12345678'
     check 'remember me' if options[:remember_me] == true
     yield if block_given?
-    click_button 'Sign In'
+    click_button 'Log In'
     user
   end
 
-  def sign_in_as_admin(options={}, &block)
+  def sign_in_as_admin(options = {}, &block)
     admin = create_admin(options)
     visit_with_option options[:visit], new_admin_session_path
     fill_in 'email', with: 'admin@test.com'
     fill_in 'password', with: '123456'
     yield if block_given?
-    click_button 'Sign In'
+    click_button 'Log In'
     admin
   end
 
@@ -58,7 +61,7 @@ class ActionDispatch::IntegrationTest
   # account Middleware redirects.
   #
   def assert_redirected_to(url)
-    assert [301, 302].include?(@integration_session.status),
+    assert_includes [301, 302], @integration_session.status,
            "Expected status to be 301 or 302, got #{@integration_session.status}"
 
     assert_url url, @integration_session.headers["Location"]

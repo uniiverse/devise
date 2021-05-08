@@ -1,16 +1,38 @@
+# frozen_string_literal: true
+
 # All Devise controllers are inherited from here.
 class DeviseController < Devise.parent_controller.constantize
   include Devise::Controllers::ScopedViews
 
-  helper DeviseHelper
+  if respond_to?(:helper)
+    helper DeviseHelper
+  end
 
-  helpers = %w(resource scope_name resource_name signed_in_resource
-               resource_class resource_params devise_mapping)
-  hide_action *helpers
-  helper_method *helpers
+  if respond_to?(:helper_method)
+    helpers = %w(resource scope_name resource_name signed_in_resource
+                 resource_class resource_params devise_mapping)
+    helper_method(*helpers)
+  end
 
-  prepend_before_filter :assert_is_devise_resource!
+  prepend_before_action :assert_is_devise_resource!
   respond_to :html if mimes_for_respond_to.empty?
+
+  # Override prefixes to consider the scoped view.
+  # Notice we need to check for the request due to a bug in
+  # Action Controller tests that forces _prefixes to be
+  # loaded before even having a request object.
+  #
+  # This method should be public as it is in ActionPack
+  # itself. Changing its visibility may break other gems.
+  def _prefixes #:nodoc:
+    @_prefixes ||= if self.class.scoped_views? && request && devise_mapping
+      ["#{devise_mapping.scoped_path}/#{controller_name}"] + super
+    else
+      super
+    end
+  end
+
+  protected
 
   # Gets the actual resource stored in the instance variable
   def resource
@@ -37,22 +59,6 @@ class DeviseController < Devise.parent_controller.constantize
   def devise_mapping
     @devise_mapping ||= request.env["devise.mapping"]
   end
-
-  # Override prefixes to consider the scoped view.
-  # Notice we need to check for the request due to a bug in
-  # Action Controller tests that forces _prefixes to be
-  # loaded before even having a request object.
-  def _prefixes #:nodoc:
-    @_prefixes ||= if self.class.scoped_views? && request && devise_mapping
-      super.unshift("#{devise_mapping.scoped_path}/#{controller_name}")
-    else
-      super
-    end
-  end
-
-  hide_action :_prefixes
-
-  protected
 
   # Checks whether it's a devise mapped resource or not.
   def assert_is_devise_resource! #:nodoc:
@@ -89,10 +95,10 @@ MESSAGE
     instance_variable_set(:"@#{resource_name}", new_resource)
   end
 
-  # Helper for use in before_filters where no authentication is required.
+  # Helper for use in before_actions where no authentication is required.
   #
   # Example:
-  #   before_filter :require_no_authentication, only: :new
+  #   before_action :require_no_authentication, only: :new
   def require_no_authentication
     assert_is_devise_resource!
     return unless is_navigational_format?
@@ -106,7 +112,7 @@ MESSAGE
     end
 
     if authenticated && resource = warden.user(resource_name)
-      flash[:alert] = I18n.t("devise.failure.already_authenticated")
+      set_flash_message(:alert, 'already_authenticated', scope: 'devise.failure')
       redirect_to after_sign_in_path_for(resource)
     end
   end
@@ -123,14 +129,17 @@ MESSAGE
     end
 
     if notice
-      set_flash_message :notice, notice if is_flashing_format?
+      set_flash_message! :notice, notice
       true
     end
   end
 
   # Sets the flash message with :key, using I18n. By default you are able
-  # to setup your messages using specific resource scope, and if no one is
-  # found we look to default scope.
+  # to set up your messages using specific resource scope, and if no message is
+  # found we look to the default scope. Set the "now" options key to a true
+  # value to populate the flash.now hash in lieu of the default flash hash (so
+  # the flash message will be available to the current action instead of the
+  # next action).
   # Example (i18n locale file):
   #
   #   en:
@@ -144,7 +153,25 @@ MESSAGE
   # available.
   def set_flash_message(key, kind, options = {})
     message = find_message(kind, options)
-    flash[key] = message if message.present?
+    if options[:now]
+      flash.now[key] = message if message.present?
+    else
+      flash[key] = message if message.present?
+    end
+  end
+
+  # Sets flash message if is_flashing_format? equals true
+  def set_flash_message!(key, kind, options = {})
+    if is_flashing_format?
+      set_flash_message(key, kind, options)
+    end
+  end
+
+  # Sets minimum password length to show to user
+  def set_minimum_password_length
+    if devise_mapping.validatable?
+      @minimum_password_length = resource_class.password_length.min
+    end
   end
 
   def devise_i18n_options(options)
@@ -153,11 +180,18 @@ MESSAGE
 
   # Get message for given
   def find_message(kind, options = {})
-    options[:scope] = "devise.#{controller_name}"
+    options[:scope] ||= translation_scope
     options[:default] = Array(options[:default]).unshift(kind.to_sym)
     options[:resource_name] = resource_name
     options = devise_i18n_options(options)
-    I18n.t("#{options[:resource_name]}.#{kind}", options)
+    I18n.t("#{options[:resource_name]}.#{kind}", **options)
+  end
+
+  # Controllers inheriting DeviseController are advised to override this
+  # method so that other controllers inheriting from them would use
+  # existing translations.
+  def translation_scope
+    "devise.#{controller_name}"
   end
 
   def clean_up_passwords(object)
@@ -173,4 +207,6 @@ MESSAGE
   def resource_params
     params.fetch(resource_name, {})
   end
+
+  ActiveSupport.run_load_hooks(:devise_controller, self)
 end

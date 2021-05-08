@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "devise/hooks/lockable"
 
 module Devise
@@ -7,7 +9,7 @@ module Devise
     # blocked: email and time. The former will send an email to the user when
     # the lock happens, containing a link to unlock its account. The second
     # will unlock the user automatically after some configured time (ie 2.hours).
-    # It's also possible to setup lockable to use both email and time strategies.
+    # It's also possible to set up lockable to use both email and time strategies.
     #
     # == Options
     #
@@ -55,6 +57,14 @@ module Devise
         save(validate: false)
       end
 
+      # Resets failed attempts counter to 0.
+      def reset_failed_attempts!
+        if respond_to?(:failed_attempts) && !failed_attempts.to_i.zero?
+          self.failed_attempts = 0
+          save(validate: false)
+        end
+      end
+
       # Verifies whether a user is locked or not.
       def access_locked?
         !!locked_at && !lock_expired?
@@ -64,7 +74,7 @@ module Devise
       def send_unlock_instructions
         raw, enc = Devise.token_generator.generate(self.class, :unlock_token)
         self.unlock_token = enc
-        self.save(validate: false)
+        save(validate: false)
         send_devise_notification(:unlock_instructions, raw, {})
         raw
       end
@@ -99,8 +109,7 @@ module Devise
         if super && !access_locked?
           true
         else
-          self.failed_attempts ||= 0
-          self.failed_attempts += 1
+          increment_failed_attempts
           if attempts_exceeded?
             lock_access! unless access_locked?
           else
@@ -110,15 +119,20 @@ module Devise
         end
       end
 
+      def increment_failed_attempts
+        self.class.increment_counter(:failed_attempts, id)
+        reload
+      end
+
       def unauthenticated_message
         # If set to paranoid mode, do not show the locked message because it
         # leaks the existence of an account.
         if Devise.paranoid
           super
-        elsif lock_strategy_enabled?(:failed_attempts) && last_attempt?
-          :last_attempt
-        elsif lock_strategy_enabled?(:failed_attempts) && attempts_exceeded?
+        elsif access_locked? || (lock_strategy_enabled?(:failed_attempts) && attempts_exceeded?)
           :locked
+        elsif lock_strategy_enabled?(:failed_attempts) && last_attempt? && self.class.last_attempt_warning
+          :last_attempt
         else
           super
         end
@@ -155,11 +169,14 @@ module Devise
         end
 
       module ClassMethods
+        # List of strategies that are enabled/supported if :both is used.
+        BOTH_STRATEGIES = [:time, :email]
+
         # Attempt to find a user by its unlock keys. If a record is found, send new
         # unlock instructions to it. If not user is found, returns a new user
         # with an email not found error.
         # Options must contain the user's unlock keys
-        def send_unlock_instructions(attributes={})
+        def send_unlock_instructions(attributes = {})
           lockable = find_or_initialize_with_errors(unlock_keys, attributes, :not_found)
           lockable.resend_unlock_instructions if lockable.persisted?
           lockable
@@ -181,7 +198,8 @@ module Devise
 
         # Is the unlock enabled for the given unlock strategy?
         def unlock_strategy_enabled?(strategy)
-          [:both, strategy].include?(self.unlock_strategy)
+          self.unlock_strategy == strategy ||
+            (self.unlock_strategy == :both && BOTH_STRATEGIES.include?(strategy))
         end
 
         # Is the lock enabled for the given lock strategy?
@@ -189,7 +207,7 @@ module Devise
           self.lock_strategy == strategy
         end
 
-        Devise::Models.config(self, :maximum_attempts, :lock_strategy, :unlock_strategy, :unlock_in, :unlock_keys)
+        Devise::Models.config(self, :maximum_attempts, :lock_strategy, :unlock_strategy, :unlock_in, :unlock_keys, :last_attempt_warning)
       end
     end
   end

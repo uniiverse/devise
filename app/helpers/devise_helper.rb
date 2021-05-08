@@ -1,25 +1,30 @@
+# frozen_string_literal: true
+
 module DeviseHelper
-  # A simple way to show error messages for the current devise resource. If you need
-  # to customize this method, you can either overwrite it in your application helpers or
-  # copy the views to your application.
-  #
-  # This method is intended to stay simple and it is unlikely that we are going to change
-  # it to add more behavior or options.
+  # Retain this method for backwards compatibility, deprecated in favor of modifying the
+  # devise/shared/error_messages partial.
   def devise_error_messages!
+    ActiveSupport::Deprecation.warn <<-DEPRECATION.strip_heredoc
+      [Devise] `DeviseHelper#devise_error_messages!` is deprecated and will be
+      removed in the next major version.
+
+      Devise now uses a partial under "devise/shared/error_messages" to display
+      error messages by default, and make them easier to customize. Update your
+      views changing calls from:
+
+          <%= devise_error_messages! %>
+
+      to:
+
+          <%= render "devise/shared/error_messages", resource: resource %>
+
+      To start customizing how errors are displayed, you can copy the partial
+      from devise to your `app/views` folder. Alternatively, you can run
+      `rails g devise:views` which will copy all of them again to your app.
+    DEPRECATION
+
     return "" if resource.errors.empty?
 
-    messages = resource.errors.full_messages.map { |msg| content_tag(:li, msg) }.join
-    sentence = I18n.t("errors.messages.not_saved",
-                      count: resource.errors.count,
-                      resource: resource.class.model_name.human.downcase)
-
-    html = <<-HTML
-    <div id="error_explanation">
-      <h2>#{sentence}</h2>
-      <ul>#{messages}</ul>
-    </div>
-    HTML
-
-    html.html_safe
+    render "devise/shared/error_messages", resource: resource
   end
 end

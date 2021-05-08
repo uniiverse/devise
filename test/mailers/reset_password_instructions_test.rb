@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'test_helper'
 
 class ResetPasswordInstructionsTest < ActionMailer::TestCase
@@ -27,28 +29,28 @@ class ResetPasswordInstructionsTest < ActionMailer::TestCase
     end
   end
 
-  test 'email sent after reseting the user password' do
+  test 'email sent after resetting the user password' do
     assert_not_nil mail
   end
 
   test 'content type should be set to html' do
-    assert mail.content_type.include?('text/html')
+    assert_includes mail.content_type, 'text/html'
   end
 
   test 'send confirmation instructions to the user email' do
     assert_equal [user.email], mail.to
   end
 
-  test 'setup sender from configuration' do
+  test 'set up sender from configuration' do
     assert_equal ['test@example.com'], mail.from
   end
 
-  test 'setup sender from custom mailer defaults' do
+  test 'set up sender from custom mailer defaults' do
     Devise.mailer = 'Users::Mailer'
     assert_equal ['custom@example.com'], mail.from
   end
 
-  test 'setup sender from custom mailer defaults with proc' do
+  test 'set up sender from custom mailer defaults with proc' do
     Devise.mailer = 'Users::FromProcMailer'
     assert_equal ['custom@example.com'], mail.from
   end
@@ -58,11 +60,11 @@ class ResetPasswordInstructionsTest < ActionMailer::TestCase
     assert_present mail.body.encoded
   end
 
-  test 'setup reply to as copy from sender' do
+  test 'set up reply to as copy from sender' do
     assert_equal ['test@example.com'], mail.reply_to
   end
 
-  test 'setup subject from I18n' do
+  test 'set up subject from I18n' do
     store_translations :en, devise: { mailer: { reset_password_instructions: { subject: 'Reset instructions' } } } do
       assert_equal 'Reset instructions', mail.subject
     end
@@ -82,7 +84,7 @@ class ResetPasswordInstructionsTest < ActionMailer::TestCase
     host, port = ActionMailer::Base.default_url_options.values_at :host, :port
 
     if mail.body.encoded =~ %r{<a href=\"http://#{host}:#{port}/users/password/edit\?reset_password_token=([^"]+)">}
-      assert_equal Devise.token_generator.digest(user.class, :reset_password_token, $1), user.reset_password_token
+      assert_equal user.reset_password_token, Devise.token_generator.digest(user.class, :reset_password_token, $1)
     else
       flunk "expected reset password url regex to match"
     end

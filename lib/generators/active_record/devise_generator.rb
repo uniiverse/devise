@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'rails/generators/active_record'
 require 'generators/devise/orm_helpers'
 
@@ -6,14 +8,16 @@ module ActiveRecord
     class DeviseGenerator < ActiveRecord::Generators::Base
       argument :attributes, type: :array, default: [], banner: "field:type field:type"
 
+      class_option :primary_key_type, type: :string, desc: "The type for primary key"
+
       include Devise::Generators::OrmHelpers
       source_root File.expand_path("../templates", __FILE__)
 
       def copy_devise_migration
         if (behavior == :invoke && model_exists?) || (behavior == :revoke && migration_exists?(table_name))
-          migration_template "migration_existing.rb", "db/migrate/add_devise_to_#{table_name}.rb"
+          migration_template "migration_existing.rb", "#{migration_path}/add_devise_to_#{table_name}.rb", migration_version: migration_version
         else
-          migration_template "migration.rb", "db/migrate/devise_create_#{table_name}.rb"
+          migration_template "migration.rb", "#{migration_path}/devise_create_#{table_name}.rb", migration_version: migration_version
         end
       end
 
@@ -50,11 +54,11 @@ module ActiveRecord
       t.datetime :remember_created_at
 
       ## Trackable
-      t.integer  :sign_in_count, default: 0, null: false
-      t.datetime :current_sign_in_at
-      t.datetime :last_sign_in_at
-      t.#{ip_column} :current_sign_in_ip
-      t.#{ip_column} :last_sign_in_ip
+      # t.integer  :sign_in_count, default: 0, null: false
+      # t.datetime :current_sign_in_at
+      # t.datetime :last_sign_in_at
+      # t.#{ip_column} :current_sign_in_ip
+      # t.#{ip_column} :last_sign_in_ip
 
       ## Confirmable
       # t.string   :confirmation_token
@@ -75,16 +79,47 @@ RUBY
       end
 
       def inet?
-        rails4? && postgresql?
+        postgresql?
       end
 
-      def rails4?
-        Rails.version.start_with? '4'
+      def rails5_and_up?
+        Rails::VERSION::MAJOR >= 5
+      end
+
+      def rails61_and_up?
+        Rails::VERSION::MAJOR > 6 || (Rails::VERSION::MAJOR == 6 && Rails::VERSION::MINOR >= 1)
       end
 
       def postgresql?
-        ActiveRecord::Base.connection.adapter_name.downcase == "postgresql"
+        ar_config && ar_config['adapter'] == 'postgresql'
       end
+
+      def ar_config
+        if ActiveRecord::Base.configurations.respond_to?(:configs_for)
+          if rails61_and_up?
+            ActiveRecord::Base.configurations.configs_for(env_name: Rails.env, name: "primary").configuration_hash
+          else
+            ActiveRecord::Base.configurations.configs_for(env_name: Rails.env, spec_name: "primary").config
+          end
+        else
+          ActiveRecord::Base.configurations[Rails.env]
+        end
+      end
+
+     def migration_version
+       if rails5_and_up?
+         "[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]"
+       end
+     end
+
+     def primary_key_type
+       primary_key_string if rails5_and_up?
+     end
+
+     def primary_key_string
+       key_string = options[:primary_key_type]
+       ", id: :#{key_string}" if key_string
+     end
     end
   end
 end

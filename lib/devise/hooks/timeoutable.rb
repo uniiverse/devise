@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Each time a record is set we check whether its session has already timed out
 # or not, based on last request time. If so, the record is logged out and
 # redirected to the sign in page. Also, each time the request comes and the
@@ -7,22 +9,22 @@ Warden::Manager.after_set_user do |record, warden, options|
   scope = options[:scope]
   env   = warden.request.env
 
-  if record && record.respond_to?(:timedout?) && warden.authenticated?(scope) && options[:store] != false
+  if record && record.respond_to?(:timedout?) && warden.authenticated?(scope) &&
+     options[:store] != false && !env['devise.skip_timeoutable']
     last_request_at = warden.session(scope)['last_request_at']
 
     if last_request_at.is_a? Integer
       last_request_at = Time.at(last_request_at).utc
+    elsif last_request_at.is_a? String
+      last_request_at = Time.parse(last_request_at)
     end
 
     proxy = Devise::Hooks::Proxy.new(warden)
 
-    if record.timedout?(last_request_at) && !env['devise.skip_timeout']
+    if !env['devise.skip_timeout'] &&
+        record.timedout?(last_request_at) &&
+        !proxy.remember_me_is_active?(record)
       Devise.sign_out_all_scopes ? proxy.sign_out : proxy.sign_out(scope)
-
-      if record.respond_to?(:expire_auth_token_on_timeout) && record.expire_auth_token_on_timeout
-        record.reset_authentication_token!
-      end
-
       throw :warden, scope: scope, message: :timeout
     end
 

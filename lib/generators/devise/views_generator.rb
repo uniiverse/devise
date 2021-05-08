@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'rails/generators/base'
 
 module Devise
@@ -21,13 +23,6 @@ module Devise
         public_task :copy_views
       end
 
-      # TODO: Add this to Rails itself
-      module ClassMethods
-        def hide!
-          Rails::Generators.hide_namespace self.namespace
-        end
-      end
-
       def copy_views
         if options[:views]
           options[:views].each do |directory|
@@ -47,7 +42,7 @@ module Devise
       def view_directory(name, _target_path = nil)
         directory name.to_s, _target_path || "#{target_path}/#{name}" do |content|
           if scope
-            content.gsub "devise/shared/links", "#{scope}/shared/links"
+            content.gsub("devise/shared", "#{plural_scope}/shared")
           else
             content
           end
@@ -55,7 +50,11 @@ module Devise
       end
 
       def target_path
-        @target_path ||= "app/views/#{scope || :devise}"
+        @target_path ||= "app/views/#{plural_scope || :devise}"
+      end
+
+      def plural_scope
+        @plural_scope ||= scope.presence && scope.underscore.pluralize
       end
     end
 
@@ -83,6 +82,13 @@ module Devise
       source_root File.expand_path("../../templates/simple_form_for", __FILE__)
       desc "Copies simple form enabled views to your application."
       hide!
+
+      def copy_views
+        if options[:views]
+          options[:views].delete('mailer')
+        end
+        super
+      end
     end
 
     class ErbGenerator < Rails::Generators::Base #:nodoc:
@@ -111,7 +117,7 @@ module Devise
       end
 
       def target_path
-        "app/views/#{scope || :devise}/mailer"
+        "app/views/#{plural_scope || :devise}/mailer"
       end
     end
 
@@ -128,7 +134,11 @@ module Devise
                               default: defined?(SimpleForm) ? "simple_form_for" : "form_for"
 
       hook_for :markerb,  desc: "Generate markerb instead of erb mail views",
-                          default: defined?(Markerb) ? :markerb : :erb,
+                          default: defined?(Markerb),
+                          type: :boolean
+
+      hook_for :erb,      desc: "Generate erb mail views",
+                          default: !defined?(Markerb),
                           type: :boolean
     end
   end

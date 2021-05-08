@@ -1,23 +1,10 @@
+# frozen_string_literal: true
+
 require 'test_helper'
 
 class SerializableTest < ActiveSupport::TestCase
   setup do
     @user = create_user
-  end
-
-  test 'should not include unsafe keys on XML' do
-    assert_match(/email/, @user.to_xml)
-    assert_no_match(/confirmation-token/, @user.to_xml)
-  end
-
-  test 'should not include unsafe keys on XML even if a new except is provided' do
-    assert_no_match(/email/, @user.to_xml(except: :email))
-    assert_no_match(/confirmation-token/, @user.to_xml(except: :email))
-  end
-
-  test 'should include unsafe keys on XML if a force_except is provided' do
-    assert_no_match(/<email/, @user.to_xml(force_except: :email))
-    assert_match(/confirmation-token/, @user.to_xml(force_except: :email))
   end
 
   test 'should not include unsafe keys on JSON' do
@@ -35,6 +22,19 @@ class SerializableTest < ActiveSupport::TestCase
     assert_key "confirmation_token", from_json(force_except: :email)
   end
 
+  test 'should not include unsafe keys in inspect' do
+    assert_match(/email/, @user.inspect)
+    assert_no_match(/confirmation_token/, @user.inspect)
+  end
+
+  test 'should accept frozen options' do
+    assert_key "username", @user.as_json({ only: :username, except: [:email].freeze }.freeze)["user"]
+  end
+
+  test 'constant `BLACKLIST_FOR_SERIALIZATION` is deprecated' do
+    assert_deprecated { Devise::Models::Authenticatable::BLACKLIST_FOR_SERIALIZATION }
+  end
+
   def assert_key(key, subject)
     assert subject.key?(key), "Expected #{subject.inspect} to have key #{key.inspect}"
   end
@@ -43,7 +43,7 @@ class SerializableTest < ActiveSupport::TestCase
     assert !subject.key?(key), "Expected #{subject.inspect} to not have key #{key.inspect}"
   end
 
-  def from_json(options=nil)
+  def from_json(options = nil)
     ActiveSupport::JSON.decode(@user.to_json(options))["user"]
   end
 end

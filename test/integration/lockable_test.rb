@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 require 'test_helper'
 
-class LockTest < ActionDispatch::IntegrationTest
+class LockTest < Devise::IntegrationTest
 
   def visit_user_unlock_with_token(unlock_token)
     visit user_unlock_path(unlock_token: unlock_token)
@@ -75,7 +77,7 @@ class LockTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_current_url '/users/unlock?unlock_token=invalid_token'
     assert_have_selector '#error_explanation'
-    assert_contain /Unlock token(.*)invalid/
+    assert_contain %r{Unlock token(.*)invalid}
   end
 
   test "locked user should be able to unlock account" do
@@ -85,7 +87,7 @@ class LockTest < ActionDispatch::IntegrationTest
 
     assert_current_url "/users/sign_in"
     assert_contain 'Your account has been unlocked successfully. Please sign in to continue.'
-    assert_not user.reload.access_locked?
+    refute user.reload.access_locked?
   end
 
   test "user should not send a new e-mail if already locked" do
@@ -97,7 +99,7 @@ class LockTest < ActionDispatch::IntegrationTest
 
     sign_in_as_user(password: "invalid")
     assert_contain 'Your account is locked.'
-    assert ActionMailer::Base.deliveries.empty?
+    assert_empty ActionMailer::Base.deliveries
   end
 
   test 'error message is configurable by resource name' do
@@ -128,50 +130,42 @@ class LockTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test 'user should be able to request a new unlock token via XML request' do
+  test 'user should be able to request a new unlock token via JSON request and should return empty and valid response' do
     user = create_user(locked: true)
     ActionMailer::Base.deliveries.clear
 
-    post user_unlock_path(format: 'xml'), user: {email: user.email}
+    post user_unlock_path(format: 'json'), params: { user: {email: user.email} }
     assert_response :success
-    assert_equal response.body, {}.to_xml
+    assert_equal({}.to_json, response.body)
     assert_equal 1, ActionMailer::Base.deliveries.size
   end
 
-  test 'unlocked user should not be able to request a unlock token via XML request' do
+  test 'unlocked user should not be able to request a unlock token via JSON request' do
     user = create_user(locked: false)
     ActionMailer::Base.deliveries.clear
 
-    post user_unlock_path(format: 'xml'), user: {email: user.email}
+    post user_unlock_path(format: 'json'), params: { user: {email: user.email} }
     assert_response :unprocessable_entity
-    assert response.body.include? %(<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<errors>)
+    assert_includes response.body, '{"errors":{'
     assert_equal 0, ActionMailer::Base.deliveries.size
   end
 
-  test 'user with valid unlock token should be able to unlock account via XML request' do
+  test 'user with valid unlock token should be able to unlock account via JSON request' do
     user = create_user()
     raw  = user.lock_access!
     assert user.access_locked?
-    get user_unlock_path(format: 'xml', unlock_token: raw)
+    get user_unlock_path(format: 'json', unlock_token: raw)
     assert_response :success
-    assert response.body.include? %(<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<user>)
+    assert_includes response.body, '{"user":{'
   end
 
-
-  test 'user with invalid unlock token should not be able to unlock the account via XML request' do
-    get user_unlock_path(format: 'xml', unlock_token: 'invalid_token')
+  test 'user with invalid unlock token should not be able to unlock the account via JSON request' do
+    get user_unlock_path(format: 'json', unlock_token: 'invalid_token')
     assert_response :unprocessable_entity
-    assert response.body.include? %(<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<errors>)
+    assert_includes response.body, '{"unlock_token":['
   end
 
-  test "when using json to ask a unlock request, should not return the user" do
-    user = create_user(locked: true)
-    post user_unlock_path(format: "json", user: {email: user.email})
-    assert_response :success
-    assert_equal response.body, {}.to_json
-  end
-
-  test "in paranoid mode, when trying to unlock an user that exists it should not say that it exists if it is locked" do
+  test "in paranoid mode, when trying to unlock a user that exists it should not say that it exists if it is locked" do
     swap Devise, paranoid: true do
       user = create_user(locked: true)
 
@@ -186,7 +180,7 @@ class LockTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "in paranoid mode, when trying to unlock an user that exists it should not say that it exists if it is not locked" do
+  test "in paranoid mode, when trying to unlock a user that exists it should not say that it exists if it is not locked" do
     swap Devise, paranoid: true do
       user = create_user(locked: false)
 
@@ -201,7 +195,7 @@ class LockTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "in paranoid mode, when trying to unlock an user that does not exists it should not say that it does not exists" do
+  test "in paranoid mode, when trying to unlock a user that does not exists it should not say that it does not exists" do
     swap Devise, paranoid: true do
       visit new_user_session_path
       click_link "Didn't receive unlock instructions?"
@@ -225,11 +219,11 @@ class LockTest < ActionDispatch::IntegrationTest
       visit new_user_session_path
       fill_in 'email', with: user.email
       fill_in 'password', with: "abadpassword"
-      click_button 'Sign in'
+      click_button 'Log in'
 
       fill_in 'email', with: user.email
       fill_in 'password', with: "abadpassword"
-      click_button 'Sign in'
+      click_button 'Log in'
 
       assert_current_url "/users/sign_in"
       assert_not_contain "locked"

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 RailsApp::Application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
 
@@ -20,7 +22,13 @@ RailsApp::Application.configure do
   # config.action_dispatch.rack_cache = true
 
   # Disable Rails's static asset server (Apache or nginx will already do this).
-  config.serve_static_assets = false
+  if Devise::Test.rails5_and_up?
+    config.public_file_server.enabled = false
+  elsif Rails.version >= "4.2.0"
+    config.serve_static_files = false
+  else
+    config.serve_static_assets = false
+  end
 
   # Compress JavaScripts and CSS.
   config.assets.js_compressor  = :uglifier
@@ -46,7 +54,7 @@ RailsApp::Application.configure do
   config.log_level = :info
 
   # Prepend all log lines with the following tags.
-  # config.log_tags = [ :subdomain, :uuid ]
+  # config.log_tags = [:subdomain, :uuid]
 
   # Use a different logger for distributed setups.
   # config.logger = ActiveSupport::TaggedLogging.new(SyslogLogger.new)

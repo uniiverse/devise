@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 Rails.application.routes.draw do
   # Resources for testing
   resources :users, only: [:index] do
@@ -13,12 +15,27 @@ Rails.application.routes.draw do
     end
   end
 
-  resources :admins, only: [:index] do
-    get :expire, on: :member
-  end
+  resources :admins, only: [:index]
+
+  resources :streaming, only: [:index]
 
   # Users scope
   devise_for :users, controllers: { omniauth_callbacks: "users/omniauth_callbacks" }
+
+  devise_for :user_on_main_apps,
+    class_name: 'UserOnMainApp',
+    router_name: :main_app,
+    module: :devise
+
+  devise_for :user_on_engines,
+    class_name: 'UserOnEngine',
+    router_name: :fake_engine,
+    module: :devise
+
+  devise_for :user_without_email,
+    class_name: 'UserWithoutEmail',
+    router_name: :main_app,
+    module: :devise
 
   as :user do
     get "/as/sign_in", to: "devise/sessions#new"
@@ -101,6 +118,7 @@ Rails.application.routes.draw do
   namespace :sign_out_via, module: "devise" do
     devise_for :deletes, sign_out_via: :delete, class_name: "Admin"
     devise_for :posts, sign_out_via: :post, class_name: "Admin"
+    devise_for :gets, sign_out_via: :get, class_name: "Admin"
     devise_for :delete_or_posts, sign_out_via: [:delete, :post], class_name: "Admin"
   end
 

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'test_helper'
 require 'ostruct'
 require 'warden/strategies/base'
@@ -24,10 +26,10 @@ class CustomStrategy < Warden::Strategies::Base
   end
 end
 
-class CustomStrategyTest < ActionController::TestCase
+class CustomStrategyTest < Devise::ControllerTestCase
   tests CustomStrategyController
 
-  include Devise::TestHelpers
+  include Devise::Test::ControllerHelpers
 
   setup do
     Warden::Strategies.add(:custom_strategy, CustomStrategy)
@@ -40,9 +42,8 @@ class CustomStrategyTest < ActionController::TestCase
   test "custom strategy can return its own status code" do
     ret = get :new
 
-    # check the returned rack array
-    assert ret.is_a?(Array)
-    assert_equal 400, ret.first
+    # check the returned response
+    assert ret.is_a?(ActionDispatch::TestResponse)
 
     # check the saved response as well. This is purely so that the response is available to the testing framework
     # for verification. In production, the above array would be delivered directly to Rack.
@@ -52,11 +53,10 @@ class CustomStrategyTest < ActionController::TestCase
   test "custom strategy can return custom headers" do
     ret = get :new
 
-    # check the returned rack array
-    assert ret.is_a?(Array)
-    assert_equal ret.third['X-FOO'], 'BAR'
+    # check the returned response
+    assert ret.is_a?(ActionDispatch::TestResponse)
 
     # check the saved response headers as well.
-    assert_equal response.headers['X-FOO'], 'BAR'
+    assert_equal 'BAR', response.headers['X-FOO']
   end
 end

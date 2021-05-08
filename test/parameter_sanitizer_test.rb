@@ -1,81 +1,105 @@
+# frozen_string_literal: true
+
 require 'test_helper'
 require 'devise/parameter_sanitizer'
 
-class BaseSanitizerTest < ActiveSupport::TestCase
+class ParameterSanitizerTest < ActiveSupport::TestCase
   def sanitizer(params)
-    Devise::BaseSanitizer.new(User, :user, params)
+    params = ActionController::Parameters.new(params)
+    Devise::ParameterSanitizer.new(User, :user, params)
   end
 
-  test 'returns chosen params' do
-    sanitizer = sanitizer(user: { "email" => "jose" })
-    assert_equal({ "email" => "jose" }, sanitizer.sanitize(:sign_in))
+  test 'permits the default parameters for sign in' do
+    sanitizer = sanitizer('user' => { 'email' => 'jose' })
+    sanitized = sanitizer.sanitize(:sign_in)
+
+    assert_equal({ 'email' => 'jose' }, sanitized)
   end
-end
 
-if defined?(ActionController::StrongParameters)
-  require 'active_model/forbidden_attributes_protection'
+  test 'permits empty params when received not a hash' do
+    sanitizer = sanitizer({ 'user' => 'string' })
+    sanitized = sanitizer.sanitize(:sign_in)
 
-  class ParameterSanitizerTest < ActiveSupport::TestCase
-    def sanitizer(params)
-      params = ActionController::Parameters.new(params)
-      Devise::ParameterSanitizer.new(User, :user, params)
-    end
+    assert_equal({}, sanitized)
+  end
 
-    test 'filters some parameters on sign in by default' do
-      sanitizer = sanitizer(user: { "email" => "jose", "password" => "invalid", "remember_me" => "1" })
-      assert_equal({ "email" => "jose", "password" => "invalid", "remember_me" => "1" }, sanitizer.sanitize(:sign_in))
-    end
-
-    test 'handles auth keys as a hash' do
-      swap Devise, authentication_keys: {email: true} do
-        sanitizer = sanitizer(user: { "email" => "jose", "password" => "invalid" })
-        assert_equal({ "email" => "jose", "password" => "invalid" }, sanitizer.sanitize(:sign_in))
-      end
-    end
-
-    test 'filters some parameters on sign up by default' do
-      sanitizer = sanitizer(user: { "email" => "jose", "role" => "invalid" })
-      assert_equal({ "email" => "jose" }, sanitizer.sanitize(:sign_up))
-    end
-
-    test 'filters some parameters on account update by default' do
-      sanitizer = sanitizer(user: { "email" => "jose", "role" => "invalid" })
-      assert_equal({ "email" => "jose" }, sanitizer.sanitize(:account_update))
-    end
-
-    test 'allows custom hooks' do
-      sanitizer = sanitizer(user: { "email" => "jose", "password" => "invalid" })
-      sanitizer.for(:sign_in) { |user| user.permit(:email, :password) }
-      assert_equal({ "email" => "jose", "password" => "invalid" }, sanitizer.sanitize(:sign_in))
-    end
-
-    test 'adding multiple permitted parameters' do
-      sanitizer = sanitizer(user: { "email" => "jose", "username" => "jose1", "role" => "valid" })
-      sanitizer.for(:sign_in).concat([:username, :role])
-      assert_equal({ "email" => "jose", "username" => "jose1", "role" => "valid" }, sanitizer.sanitize(:sign_in))
-    end
-
-    test 'removing multiple default parameters' do
-      sanitizer = sanitizer(user: { "email" => "jose", "password" => "invalid", "remember_me" => "1" })
-      sanitizer.for(:sign_in).delete(:email)
-      sanitizer.for(:sign_in).delete(:password)
-      assert_equal({ "remember_me" => "1" }, sanitizer.sanitize(:sign_in))
-    end
-
-    test 'raises on unknown hooks' do
-      sanitizer = sanitizer(user: { "email" => "jose", "password" => "invalid" })
-      assert_raise NotImplementedError do
-        sanitizer.sanitize(:unknown)
-      end
-    end
-
-    test 'passes parameters to filter as arguments to sanitizer' do
-      params = {user: stub}
-      sanitizer = Devise::ParameterSanitizer.new(User, :user, params)
-
-      params[:user].expects(:permit).with(kind_of(Symbol), kind_of(Symbol), kind_of(Symbol))
-
+  test 'does not rise error when received string instead of hash' do
+    sanitizer = sanitizer('user' => 'string')
+    assert_nothing_raised do
       sanitizer.sanitize(:sign_in)
     end
+  end
+
+  test 'does not rise error when received nil instead of hash' do
+    sanitizer = sanitizer('user' => nil)
+    assert_nothing_raised do
+      sanitizer.sanitize(:sign_in)
+    end
+  end
+
+  test 'permits empty params when received nil instead of hash' do
+    sanitizer = sanitizer({ 'user' => nil })
+    sanitized = sanitizer.sanitize(:sign_in)
+
+    assert_equal({}, sanitized)
+  end
+
+  test 'permits the default parameters for sign up' do
+    sanitizer = sanitizer('user' => { 'email' => 'jose', 'role' => 'invalid' })
+    sanitized = sanitizer.sanitize(:sign_up)
+
+    assert_equal({ 'email' => 'jose' }, sanitized)
+  end
+
+  test 'permits the default parameters for account update' do
+    sanitizer = sanitizer('user' => { 'email' => 'jose', 'role' => 'invalid' })
+    sanitized = sanitizer.sanitize(:account_update)
+
+    assert_equal({ 'email' => 'jose' }, sanitized)
+  end
+
+  test 'permits news parameters for an existing action' do
+    sanitizer = sanitizer('user' => { 'username' => 'jose' })
+    sanitizer.permit(:sign_in, keys: [:username])
+    sanitized = sanitizer.sanitize(:sign_in)
+
+    assert_equal({ 'username' => 'jose' }, sanitized)
+  end
+
+  test 'permits news parameters for an existing action with a block' do
+    sanitizer = sanitizer('user' => { 'username' => 'jose' })
+    sanitizer.permit(:sign_in) do |user|
+      user.permit(:username)
+    end
+
+    sanitized = sanitizer.sanitize(:sign_in)
+
+    assert_equal({ 'username' => 'jose' }, sanitized)
+  end
+
+  test 'permit parameters for new actions' do
+    sanitizer = sanitizer('user' => { 'email' => 'jose@omglol', 'name' => 'Jose' })
+    sanitizer.permit(:invite_user, keys: [:email, :name])
+
+    sanitized = sanitizer.sanitize(:invite_user)
+
+    assert_equal({ 'email' => 'jose@omglol', 'name' => 'Jose' }, sanitized)
+  end
+
+  test 'fails when we do not have any permitted parameters for the action' do
+    sanitizer = sanitizer('user' => { 'email' => 'jose', 'password' => 'invalid' })
+
+    assert_raise NotImplementedError do
+      sanitizer.sanitize(:unknown)
+    end
+  end
+
+  test 'removes permitted parameters' do
+    sanitizer = sanitizer('user' => { 'email' => 'jose@omglol', 'username' => 'jose' })
+
+    sanitizer.permit(:sign_in, keys: [:username], except: [:email])
+    sanitized = sanitizer.sanitize(:sign_in)
+
+    assert_equal({ 'username' => 'jose' }, sanitized)
   end
 end

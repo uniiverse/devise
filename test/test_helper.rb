@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 ENV["RAILS_ENV"] = "test"
 DEVISE_ORM = (ENV["DEVISE_ORM"] || :active_record).to_sym
 
@@ -10,11 +12,16 @@ require "orm/#{DEVISE_ORM}"
 
 I18n.load_path << File.expand_path("../support/locale/en.yml", __FILE__)
 
-require 'mocha/setup'
+require 'mocha/minitest'
+require 'timecop'
 require 'webrat'
 Webrat.configure do |config|
   config.mode = :rails
   config.open_error_files = false
+end
+
+if ActiveSupport.respond_to?(:test_order)
+  ActiveSupport.test_order = :random
 end
 
 OmniAuth.config.logger = Logger.new('/dev/null')
@@ -27,3 +34,4 @@ Dir["#{File.dirname(__FILE__)}/support/**/*.rb"].each { |f| require f }
 require "rails/generators/test_case"
 require "generators/devise/install_generator"
 require "generators/devise/views_generator"
+require "generators/devise/controllers_generator"

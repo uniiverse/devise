@@ -1,16 +1,24 @@
+# frozen_string_literal: true
+
 require 'test_helper'
 
-class RememberMeTest < ActionDispatch::IntegrationTest
-  def create_user_and_remember(add_to_token='')
+class RememberMeTest < Devise::IntegrationTest
+  def create_user_and_remember(add_to_token = '')
     user = create_user
     user.remember_me!
-    raw_cookie = User.serialize_into_cookie(user).tap { |a| a.last << add_to_token }
+    raw_cookie = User.serialize_into_cookie(user).tap { |a| a[1] << add_to_token }
     cookies['remember_user_token'] = generate_signed_cookie(raw_cookie)
     user
   end
 
   def generate_signed_cookie(raw_cookie)
-    request = ActionDispatch::TestRequest.new
+    request = if Devise::Test.rails51? || Devise::Test.rails52_and_up?
+      ActionController::TestRequest.create(Class.new) # needs a "controller class"
+    elsif Devise::Test.rails5?
+      ActionController::TestRequest.create
+    else
+      ActionController::TestRequest.new
+    end
     request.cookie_jar.signed['raw_cookie'] = raw_cookie
     request.cookie_jar['raw_cookie']
   end
@@ -33,12 +41,12 @@ class RememberMeTest < ActionDispatch::IntegrationTest
   test 'handle unverified requests gets rid of caches' do
     swap ApplicationController, allow_forgery_protection: true do
       post exhibit_user_url(1)
-      assert_not warden.authenticated?(:user)
+      refute warden.authenticated?(:user)
 
       create_user_and_remember
       post exhibit_user_url(1)
       assert_equal "User is not authenticated", response.body
-      assert_not warden.authenticated?(:user)
+      refute warden.authenticated?(:user)
     end
   end
 
@@ -47,10 +55,12 @@ class RememberMeTest < ActionDispatch::IntegrationTest
       get new_user_session_path
       assert request.session[:_csrf_token]
 
-      post user_session_path, authenticity_token: "oops", user:
-           { email: "jose.valim@gmail.com", password: "123456", remember_me: "1" }
-      assert_not warden.authenticated?(:user)
-      assert_not request.cookies['remember_user_token']
+      post user_session_path, params: {
+          authenticity_token: "oops",
+          user: { email: "jose.valim@gmail.com", password: "123456", remember_me: "1" }
+        }
+      refute warden.authenticated?(:user)
+      refute request.cookies['remember_user_token']
     end
   end
 
@@ -92,7 +102,6 @@ class RememberMeTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert warden.authenticated?(:user)
     assert warden.user(:user) == user
-    assert_match /remember_user_token[^\n]*HttpOnly/, response.headers["Set-Cookie"], "Expected Set-Cookie header in response to set HttpOnly flag on remember_user_token cookie."
   end
 
   test 'remember the user before sign up and redirect them to their home' do
@@ -118,26 +127,60 @@ class RememberMeTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test 'extends remember period when extend remember period config is true' do
+    swap Devise, extend_remember_period: true, remember_for: 1.year do
+      create_user_and_remember
+      old_remember_token = nil
+
+      travel_to 1.day.ago do
+        get root_path
+        old_remember_token = request.cookies['remember_user_token']
+      end
+
+      get root_path
+      current_remember_token = request.cookies['remember_user_token']
+
+      refute_equal old_remember_token, current_remember_token
+    end
+  end
+
+  test 'does not extend remember period when extend period config is false' do
+    swap Devise, extend_remember_period: false, remember_for: 1.year do
+      create_user_and_remember
+      old_remember_token = nil
+
+      travel_to 1.day.ago do
+        get root_path
+        old_remember_token = request.cookies['remember_user_token']
+      end
+
+      get root_path
+      current_remember_token = request.cookies['remember_user_token']
+
+      assert_equal old_remember_token, current_remember_token
+    end
+  end
+
   test 'do not remember other scopes' do
     create_user_and_remember
     get root_path
     assert_response :success
     assert warden.authenticated?(:user)
-    assert_not warden.authenticated?(:admin)
+    refute warden.authenticated?(:admin)
   end
 
   test 'do not remember with invalid token' do
     create_user_and_remember('add')
     get users_path
-    assert_not warden.authenticated?(:user)
+    refute warden.authenticated?(:user)
     assert_redirected_to new_user_session_path
   end
 
   test 'do not remember with expired token' do
     create_user_and_remember
-    swap Devise, remember_for: 0 do
+    swap Devise, remember_for: 0.days do
       get users_path
-      assert_not warden.authenticated?(:user)
+      refute warden.authenticated?(:user)
       assert_redirected_to new_user_session_path
     end
   end
@@ -147,12 +190,12 @@ class RememberMeTest < ActionDispatch::IntegrationTest
     get users_path
     assert warden.authenticated?(:user)
 
-    get destroy_user_session_path
-    assert_not warden.authenticated?(:user)
+    delete destroy_user_session_path
+    refute warden.authenticated?(:user)
     assert_nil warden.cookies['remember_user_token']
 
     get users_path
-    assert_not warden.authenticated?(:user)
+    refute warden.authenticated?(:user)
   end
 
   test 'changing user password expires remember me token' do
@@ -162,6 +205,15 @@ class RememberMeTest < ActionDispatch::IntegrationTest
     user.save!
 
     get users_path
-    assert_not warden.authenticated?(:user)
+    refute warden.authenticated?(:user)
+  end
+
+  test 'valid sign in calls after_remembered callback' do
+    user = create_user_and_remember
+
+    User.expects(:serialize_from_cookie).returns user
+    user.expects :after_remembered
+
+    get new_user_registration_path
   end
 end

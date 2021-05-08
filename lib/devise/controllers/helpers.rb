@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Devise
   module Controllers
     # Those helpers are convenience methods added to ApplicationController.
@@ -7,10 +9,76 @@ module Devise
       include Devise::Controllers::StoreLocation
 
       included do
-        helper_method :warden, :signed_in?, :devise_controller?
+        if respond_to?(:helper_method)
+          helper_method :warden, :signed_in?, :devise_controller?
+        end
       end
 
       module ClassMethods
+        # Define authentication filters and accessor helpers for a group of mappings.
+        # These methods are useful when you are working with multiple mappings that
+        # share some functionality. They are pretty much the same as the ones
+        # defined for normal mappings.
+        #
+        # Example:
+        #
+        #   inside BlogsController (or any other controller, it doesn't matter which):
+        #     devise_group :blogger, contains: [:user, :admin]
+        #
+        #   Generated methods:
+        #     authenticate_blogger!  # Redirects unless user or admin are signed in
+        #     blogger_signed_in?     # Checks whether there is either a user or an admin signed in
+        #     current_blogger        # Currently signed in user or admin
+        #     current_bloggers       # Currently signed in user and admin
+        #
+        #   Use:
+        #     before_action :authenticate_blogger!              # Redirects unless either a user or an admin are authenticated
+        #     before_action ->{ authenticate_blogger! :admin }  # Redirects to the admin login page
+        #     current_blogger :user                             # Preferably returns a User if one is signed in
+        #
+        def devise_group(group_name, opts = {})
+          mappings = "[#{ opts[:contains].map { |m| ":#{m}" }.join(',') }]"
+
+          class_eval <<-METHODS, __FILE__, __LINE__ + 1
+            def authenticate_#{group_name}!(favorite = nil, opts = {})
+              unless #{group_name}_signed_in?
+                mappings = #{mappings}
+                mappings.unshift mappings.delete(favorite.to_sym) if favorite
+                mappings.each do |mapping|
+                  opts[:scope] = mapping
+                  warden.authenticate!(opts) if !devise_controller? || opts.delete(:force)
+                end
+              end
+            end
+
+            def #{group_name}_signed_in?
+              #{mappings}.any? do |mapping|
+                warden.authenticate?(scope: mapping)
+              end
+            end
+
+            def current_#{group_name}(favorite = nil)
+              mappings = #{mappings}
+              mappings.unshift mappings.delete(favorite.to_sym) if favorite
+              mappings.each do |mapping|
+                current = warden.authenticate(scope: mapping)
+                return current if current
+              end
+              nil
+            end
+
+            def current_#{group_name.to_s.pluralize}
+              #{mappings}.map do |mapping|
+                warden.authenticate(scope: mapping)
+              end.compact
+            end
+
+            if respond_to?(:helper_method)
+              helper_method "current_#{group_name}", "current_#{group_name.to_s.pluralize}", "#{group_name}_signed_in?"
+            end
+          METHODS
+        end
+
         def log_process_action(payload)
           payload[:status] ||= 401 unless payload[:exception]
           super
@@ -18,7 +86,7 @@ module Devise
       end
 
       # Define authentication filters and accessor helpers based on mappings.
-      # These filters should be used inside the controllers as before_filters,
+      # These filters should be used inside the controllers as before_actions,
       # so you can control the scope of the user who should be signed in to
       # access that specific controller/action.
       # Example:
@@ -38,14 +106,14 @@ module Devise
       #     admin_session       # Session data available only to the admin scope
       #
       #   Use:
-      #     before_filter :authenticate_user!  # Tell devise to use :user map
-      #     before_filter :authenticate_admin! # Tell devise to use :admin map
+      #     before_action :authenticate_user!  # Tell devise to use :user map
+      #     before_action :authenticate_admin! # Tell devise to use :admin map
       #
       def self.define_helpers(mapping) #:nodoc:
         mapping = mapping.name
 
         class_eval <<-METHODS, __FILE__, __LINE__ + 1
-          def authenticate_#{mapping}!(opts={})
+          def authenticate_#{mapping}!(opts = {})
             opts[:scope] = :#{mapping}
             warden.authenticate!(opts) if !devise_controller? || opts.delete(:force)
           end
@@ -64,33 +132,31 @@ module Devise
         METHODS
 
         ActiveSupport.on_load(:action_controller) do
-          helper_method "current_#{mapping}", "#{mapping}_signed_in?", "#{mapping}_session"
+          if respond_to?(:helper_method)
+            helper_method "current_#{mapping}", "#{mapping}_signed_in?", "#{mapping}_session"
+          end
         end
       end
 
       # The main accessor for the warden proxy instance
       def warden
-        request.env['warden']
+        request.env['warden'] or raise MissingWarden
       end
 
       # Return true if it's a devise_controller. false to all controllers unless
       # the controllers defined inside devise. Useful if you want to apply a before
       # filter to all controllers, except the ones in devise:
       #
-      #   before_filter :my_filter, unless: :devise_controller?
+      #   before_action :my_filter, unless: :devise_controller?
       def devise_controller?
         is_a?(::DeviseController)
       end
 
-      # Setup a param sanitizer to filter parameters using strong_parameters. See
+      # Set up a param sanitizer to filter parameters using strong_parameters. See
       # lib/devise/parameter_sanitizer.rb for more info. Override this
       # method in your application controller to use your own parameter sanitizer.
       def devise_parameter_sanitizer
-        @devise_parameter_sanitizer ||= if defined?(ActionController::StrongParameters)
-          Devise::ParameterSanitizer.new(resource_class, resource_name, params)
-        else
-          Devise::BaseSanitizer.new(resource_class, resource_name, params)
-        end
+        @devise_parameter_sanitizer ||= Devise::ParameterSanitizer.new(resource_class, resource_name, params)
       end
 
       # Tell warden that params authentication is allowed for that specific page.
@@ -102,9 +168,16 @@ module Devise
       # tries to find a resource_root_path, otherwise it uses the root_path.
       def signed_in_root_path(resource_or_scope)
         scope = Devise::Mapping.find_scope!(resource_or_scope)
+        router_name = Devise.mappings[scope].router_name
+
         home_path = "#{scope}_root_path"
-        if respond_to?(home_path, true)
-          send(home_path)
+
+        context = router_name ? send(router_name) : self
+
+        if context.respond_to?(home_path, true)
+          context.send(home_path)
+        elsif context.respond_to?(:root_path)
+          context.root_path
         elsif respond_to?(:root_path)
           root_path
         else
@@ -121,10 +194,10 @@ module Devise
       # root path. For a user scope, you can define the default url in
       # the following way:
       #
-      #   map.user_root '/users', controller: 'users' # creates user_root_path
+      #   get '/users' => 'users#index', as: :user_root # creates user_root_path
       #
-      #   map.namespace :user do |user|
-      #     user.root controller: 'users' # creates user_root_path
+      #   namespace :user do
+      #     root 'users#index' # creates user_root_path
       #   end
       #
       # If the resource root path is not defined, root_path is used. However,
@@ -150,7 +223,10 @@ module Devise
       #
       # By default it is the root_path.
       def after_sign_out_path_for(resource_or_scope)
-        respond_to?(:root_path) ? root_path : "/"
+        scope = Devise::Mapping.find_scope!(resource_or_scope)
+        router_name = Devise.mappings[scope].router_name
+        context = router_name ? send(router_name) : self
+        context.respond_to?(:root_path) ? context.root_path : "/"
       end
 
       # Sign in a user and tries to redirect first to the stored location and
@@ -176,7 +252,7 @@ module Devise
       # Overwrite Rails' handle unverified request to sign out all scopes,
       # clear run strategies and remove cached variables.
       def handle_unverified_request
-        super # call the default behaviour which resets/nullifies/raises
+        super # call the default behavior which resets/nullifies/raises
         request.env["devise.skip_storage"] = true
         sign_out_all_scopes(false)
       end
@@ -192,21 +268,26 @@ module Devise
       # Check if flash messages should be emitted. Default is to do it on
       # navigational formats
       def is_flashing_format?
-        is_navigational_format?
+        request.respond_to?(:flash) && is_navigational_format?
       end
 
       private
-
-      def expire_session_data_after_sign_in!
-        ActiveSupport::Deprecation.warn "expire_session_data_after_sign_in! is deprecated " \
-          "in favor of expire_data_after_sign_in!"
-        expire_data_after_sign_in!
-      end
 
       def expire_data_after_sign_out!
         Devise.mappings.each { |_,m| instance_variable_set("@current_#{m.name}", nil) }
         super
       end
+    end
+  end
+
+  class MissingWarden < StandardError
+    def initialize
+      super "Devise could not find the `Warden::Proxy` instance on your request environment.\n" + \
+        "Make sure that your application is loading Devise and Warden as expected and that " + \
+        "the `Warden::Manager` middleware is present in your middleware stack.\n" + \
+        "If you are seeing this on one of your tests, ensure that your tests are either " + \
+        "executing the Rails middleware stack or that your tests are using the `Devise::Test::ControllerHelpers` " + \
+        "module to inject the `request.env['warden']` object for you."
     end
   end
 end

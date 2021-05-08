@@ -1,7 +1,10 @@
+# frozen_string_literal: true
+
 class UsersController < ApplicationController
-  prepend_before_filter :current_user, only: :exhibit
-  before_filter :authenticate_user!, except: [:accept, :exhibit]
-  respond_to :html, :xml
+  prepend_before_action :current_user, only: :exhibit
+  before_action :authenticate_user!, except: [:accept, :exhibit]
+  clear_respond_to
+  respond_to :html, :json
 
   def index
     user_session[:cart] = "Cart"
@@ -9,11 +12,11 @@ class UsersController < ApplicationController
   end
 
   def edit_form
-    user_session['last_request_at'] = 31.minutes.ago.utc
+    user_session['last_request_at'] = params.fetch(:last_request_at, 31.minutes.ago.utc)
   end
 
   def update_form
-    render text: 'Update'
+    render (Devise::Test.rails5_and_up? ? :body : :text) => 'Update'
   end
 
   def accept
@@ -21,11 +24,11 @@ class UsersController < ApplicationController
   end
 
   def exhibit
-    render text: current_user ? "User is authenticated" : "User is not authenticated"
+    render (Devise::Test.rails5_and_up? ? :body : :text) => current_user ? "User is authenticated" : "User is not authenticated"
   end
 
   def expire
     user_session['last_request_at'] = 31.minutes.ago.utc
-    render text: 'User will be expired on next request'
+    render (Devise::Test.rails5_and_up? ? :body : :text) => 'User will be expired on next request'
   end
 end

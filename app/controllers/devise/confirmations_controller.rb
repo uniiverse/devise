@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Devise::ConfirmationsController < DeviseController
   # GET /resource/confirmation/new
   def new
@@ -22,7 +24,7 @@ class Devise::ConfirmationsController < DeviseController
     yield resource if block_given?
 
     if resource.errors.empty?
-      set_flash_message(:notice, :confirmed) if is_flashing_format?
+      set_flash_message!(:notice, :confirmed)
       respond_with_navigational(resource){ redirect_to after_confirmation_path_for(resource_name, resource) }
     else
       respond_with_navigational(resource.errors, status: :unprocessable_entity){ render :new }
@@ -33,7 +35,7 @@ class Devise::ConfirmationsController < DeviseController
 
     # The path used after resending confirmation instructions.
     def after_resending_confirmation_instructions_path_for(resource_name)
-      new_session_path(resource_name) if is_navigational_format?
+      is_navigational_format? ? new_session_path(resource_name) : '/'
     end
 
     # The path used after confirmation.
@@ -43,5 +45,9 @@ class Devise::ConfirmationsController < DeviseController
       else
         new_session_path(resource_name)
       end
+    end
+
+    def translation_scope
+      'devise.confirmations'
     end
 end

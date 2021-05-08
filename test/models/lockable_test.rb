@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'test_helper'
 
 class LockableTest < ActiveSupport::TestCase
@@ -7,16 +9,16 @@ class LockableTest < ActiveSupport::TestCase
 
   test "should respect maximum attempts configuration" do
     user = create_user
-    user.confirm!
+    user.confirm
     swap Devise, maximum_attempts: 2 do
       2.times { user.valid_for_authentication?{ false } }
       assert user.reload.access_locked?
     end
   end
 
-  test "should increment failed_attempts on successfull validation if the user is already locked" do
+  test "should increment failed_attempts on successful validation if the user is already locked" do
     user = create_user
-    user.confirm!
+    user.confirm
 
     swap Devise, maximum_attempts: 2 do
       2.times { user.valid_for_authentication?{ false } }
@@ -29,12 +31,49 @@ class LockableTest < ActiveSupport::TestCase
 
   test "should not touch failed_attempts if lock_strategy is none" do
     user = create_user
-    user.confirm!
+    user.confirm
     swap Devise, lock_strategy: :none, maximum_attempts: 2 do
       3.times { user.valid_for_authentication?{ false } }
       assert !user.access_locked?
       assert_equal 0, user.failed_attempts
     end
+  end
+
+  test "should read failed_attempts from database when incrementing" do
+    user = create_user
+    initial_failed_attempts = user.failed_attempts
+    same_user = User.find(user.id)
+
+    user.increment_failed_attempts
+    same_user.increment_failed_attempts
+
+    assert_equal initial_failed_attempts + 2, user.reload.failed_attempts
+  end
+
+  test "reset_failed_attempts! updates the failed attempts counter back to 0" do
+    user = create_user(failed_attempts: 3)
+    assert_equal 3, user.failed_attempts
+
+    user.reset_failed_attempts!
+    assert_equal 0, user.failed_attempts
+
+    user.reset_failed_attempts!
+    assert_equal 0, user.failed_attempts
+  end
+
+  test "reset_failed_attempts! does not run model validations" do
+    user = create_user(failed_attempts: 1)
+    user.expects(:after_validation_callback).never
+
+    assert user.reset_failed_attempts!
+    assert_equal 0, user.failed_attempts
+  end
+
+  test "reset_failed_attempts! does not try to reset if not using failed attempts strategy" do
+    admin = create_admin
+
+    refute_respond_to admin, :failed_attempts
+    refute admin.reset_failed_attempts!
   end
 
   test 'should be valid for authentication with a unlocked user' do
@@ -46,17 +85,17 @@ class LockableTest < ActiveSupport::TestCase
 
   test "should verify whether a user is locked or not" do
     user = create_user
-    assert_not user.access_locked?
+    refute user.access_locked?
     user.lock_access!
     assert user.access_locked?
   end
 
   test "active_for_authentication? should be the opposite of locked?" do
     user = create_user
-    user.confirm!
+    user.confirm
     assert user.active_for_authentication?
     user.lock_access!
-    assert_not user.active_for_authentication?
+    refute user.active_for_authentication?
   end
 
   test "should unlock a user by cleaning locked_at, failed_attempts and unlock_token" do
@@ -72,7 +111,7 @@ class LockableTest < ActiveSupport::TestCase
   end
 
   test "new user should not be locked and should have zero failed_attempts" do
-    assert_not new_user.access_locked?
+    refute new_user.access_locked?
     assert_equal 0, create_user.failed_attempts
   end
 
@@ -83,7 +122,7 @@ class LockableTest < ActiveSupport::TestCase
       assert user.access_locked?
 
       Devise.unlock_in = 1.hour
-      assert_not user.access_locked?
+      refute user.access_locked?
     end
   end
 
@@ -108,7 +147,7 @@ class LockableTest < ActiveSupport::TestCase
       user = create_user
       user.lock_access!
       token = user.unlock_token
-      assert !unlock_tokens.include?(token)
+      refute_includes unlock_tokens, token
       unlock_tokens << token
     end
   end
@@ -161,19 +200,19 @@ class LockableTest < ActiveSupport::TestCase
     user = create_user
     raw  = user.send_unlock_instructions
     locked_user = User.unlock_access_by_token(raw)
-    assert_equal locked_user, user
-    assert_not user.reload.access_locked?
+    assert_equal user, locked_user
+    refute user.reload.access_locked?
   end
 
   test 'should return a new record with errors when a invalid token is given' do
     locked_user = User.unlock_access_by_token('invalid_token')
-    assert_not locked_user.persisted?
+    refute locked_user.persisted?
     assert_equal "is invalid", locked_user.errors[:unlock_token].join
   end
 
   test 'should return a new record with errors when a blank token is given' do
     locked_user = User.unlock_access_by_token('')
-    assert_not locked_user.persisted?
+    refute locked_user.persisted?
     assert_equal "can't be blank", locked_user.errors[:unlock_token].join
   end
 
@@ -181,12 +220,12 @@ class LockableTest < ActiveSupport::TestCase
     user = create_user
     user.lock_access!
     unlock_user = User.send_unlock_instructions(email: user.email)
-    assert_equal unlock_user, user
+    assert_equal user, unlock_user
   end
 
   test 'should return a new user if no email was found' do
     unlock_user = User.send_unlock_instructions(email: "invalid@example.com")
-    assert_not unlock_user.persisted?
+    refute unlock_user.persisted?
   end
 
   test 'should add error to new user email if no email was found' do
@@ -198,7 +237,7 @@ class LockableTest < ActiveSupport::TestCase
     swap Devise, authentication_keys: [:username, :email] do
       user = create_user
       unlock_user = User.send_unlock_instructions(email: user.email, username: user.username)
-      assert_equal unlock_user, user
+      assert_equal user, unlock_user
     end
   end
 
@@ -206,23 +245,23 @@ class LockableTest < ActiveSupport::TestCase
     swap Devise, unlock_keys: [:username, :email] do
       user = create_user
       unlock_user = User.send_unlock_instructions(email: user.email)
-      assert_not unlock_user.persisted?
+      refute unlock_user.persisted?
       assert_equal "can't be blank", unlock_user.errors[:username].join
     end
   end
 
   test 'should not be able to send instructions if the user is not locked' do
     user = create_user
-    assert_not user.resend_unlock_instructions
-    assert_not user.access_locked?
+    refute user.resend_unlock_instructions
+    refute user.access_locked?
     assert_equal 'was not locked', user.errors[:email].join
   end
 
   test 'should not be able to send instructions if the user if not locked and have username as unlock key' do
     swap Devise, unlock_keys: [:username] do
       user = create_user
-      assert_not user.resend_unlock_instructions
-      assert_not user.access_locked?
+      refute user.resend_unlock_instructions
+      refute user.access_locked?
       assert_equal 'was not locked', user.errors[:username].join
     end
   end
@@ -230,7 +269,7 @@ class LockableTest < ActiveSupport::TestCase
   test 'should unlock account if lock has expired and increase attempts on failure' do
     swap Devise, unlock_in: 1.minute do
       user = create_user
-      user.confirm!
+      user.confirm
 
       user.failed_attempts = 2
       user.locked_at = 2.minutes.ago
@@ -243,7 +282,7 @@ class LockableTest < ActiveSupport::TestCase
   test 'should unlock account if lock has expired on success' do
     swap Devise, unlock_in: 1.minute do
       user = create_user
-      user.confirm!
+      user.confirm
 
       user.failed_attempts = 2
       user.locked_at = 2.minutes.ago
@@ -257,11 +296,11 @@ class LockableTest < ActiveSupport::TestCase
   test 'required_fields should contain the all the fields when all the strategies are enabled' do
     swap Devise, unlock_strategy: :both do
       swap Devise, lock_strategy: :failed_attempts do
-        assert_same_content Devise::Models::Lockable.required_fields(User), [
-         :failed_attempts,
-         :locked_at,
-         :unlock_token
-        ]
+        assert_equal [
+          :failed_attempts,
+          :locked_at,
+          :unlock_token
+        ], Devise::Models::Lockable.required_fields(User)
       end
     end
   end
@@ -269,10 +308,10 @@ class LockableTest < ActiveSupport::TestCase
   test 'required_fields should contain only failed_attempts and locked_at when the strategies are time and failed_attempts are enabled' do
     swap Devise, unlock_strategy: :time do
       swap Devise, lock_strategy: :failed_attempts do
-        assert_same_content Devise::Models::Lockable.required_fields(User), [
-         :failed_attempts,
-         :locked_at
-        ]
+        assert_equal [
+          :failed_attempts,
+          :locked_at
+        ], Devise::Models::Lockable.required_fields(User)
       end
     end
   end
@@ -280,10 +319,10 @@ class LockableTest < ActiveSupport::TestCase
   test 'required_fields should contain only failed_attempts and unlock_token when the strategies are token and failed_attempts are enabled' do
     swap Devise, unlock_strategy: :email do
       swap Devise, lock_strategy: :failed_attempts do
-        assert_same_content Devise::Models::Lockable.required_fields(User), [
-         :failed_attempts,
-         :unlock_token
-        ]
+        assert_equal [
+          :failed_attempts,
+          :unlock_token
+        ], Devise::Models::Lockable.required_fields(User)
       end
     end
   end
@@ -299,18 +338,52 @@ class LockableTest < ActiveSupport::TestCase
   end
 
   test 'should return last attempt message if user made next-to-last attempt of password entering' do
-    swap Devise, last_attempt_warning: :true do
-      swap Devise, lock_strategy: :failed_attempts do
-        user = create_user
-        user.failed_attempts = Devise.maximum_attempts - 2
-        assert_equal :invalid, user.unauthenticated_message
+    swap Devise, last_attempt_warning: true, lock_strategy: :failed_attempts do
+      user = create_user
+      user.failed_attempts = Devise.maximum_attempts - 2
+      assert_equal :invalid, user.unauthenticated_message
 
-        user.failed_attempts = Devise.maximum_attempts - 1
-        assert_equal :last_attempt, user.unauthenticated_message
+      user.failed_attempts = Devise.maximum_attempts - 1
+      assert_equal :last_attempt, user.unauthenticated_message
 
-        user.failed_attempts = Devise.maximum_attempts
-        assert_equal :locked, user.unauthenticated_message
-      end
+      user.failed_attempts = Devise.maximum_attempts
+      assert_equal :locked, user.unauthenticated_message
+    end
+  end
+
+  test 'should not return last attempt message if last_attempt_warning is disabled' do
+    swap Devise, last_attempt_warning: false, lock_strategy: :failed_attempts do
+      user = create_user
+      user.failed_attempts = Devise.maximum_attempts - 1
+      assert_equal :invalid, user.unauthenticated_message
+    end
+  end
+
+  test 'should return locked message if user was programatically locked' do
+    user = create_user
+    user.lock_access!
+    assert_equal :locked, user.unauthenticated_message
+  end
+
+  test 'unlock_strategy_enabled? should return true for both, email, and time strategies if :both is used' do
+    swap Devise, unlock_strategy: :both do
+      user = create_user
+      assert_equal true, user.unlock_strategy_enabled?(:both)
+      assert_equal true, user.unlock_strategy_enabled?(:time)
+      assert_equal true, user.unlock_strategy_enabled?(:email)
+      assert_equal false, user.unlock_strategy_enabled?(:none)
+      assert_equal false, user.unlock_strategy_enabled?(:an_undefined_strategy)
+    end
+  end
+
+  test 'unlock_strategy_enabled? should return true only for the configured strategy' do
+    swap Devise, unlock_strategy: :email do
+      user = create_user
+      assert_equal false, user.unlock_strategy_enabled?(:both)
+      assert_equal false, user.unlock_strategy_enabled?(:time)
+      assert_equal true, user.unlock_strategy_enabled?(:email)
+      assert_equal false, user.unlock_strategy_enabled?(:none)
+      assert_equal false, user.unlock_strategy_enabled?(:an_undefined_strategy)
     end
   end
 end

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Devise
   # Responsible for handling devise mappings and routes configuration. Each
   # resource configured by devise_for in routes is actually creating a mapping
@@ -23,16 +25,18 @@ module Devise
   #
   class Mapping #:nodoc:
     attr_reader :singular, :scoped_path, :path, :controllers, :path_names,
-                :class_name, :sign_out_via, :format, :used_routes, :used_helpers, :failure_app
+                :class_name, :sign_out_via, :format, :used_routes, :used_helpers,
+                :failure_app, :router_name
 
     alias :name :singular
 
     # Receives an object and find a scope for it. If a scope cannot be found,
     # raises an error. If a symbol is given, it's considered to be the scope.
     def self.find_scope!(obj)
+      obj = obj.devise_scope if obj.respond_to?(:devise_scope)
       case obj
       when String, Symbol
-        return obj
+        return obj.to_sym
       when Class
         Devise.mappings.each_value { |m| return m.name if obj <= m.to }
       else
@@ -42,7 +46,7 @@ module Devise
       raise "Could not find a valid mapping for #{obj.inspect}"
     end
 
-    def self.find_by_path!(path, path_type=:fullpath)
+    def self.find_by_path!(path, path_type = :fullpath)
       Devise.mappings.each_value { |m| return m if path.include?(m.send(path_type)) }
       raise "Could not find a valid mapping for path #{path.inspect}"
     end
@@ -59,6 +63,8 @@ module Devise
 
       @sign_out_via = options[:sign_out_via] || Devise.sign_out_via
       @format = options[:format]
+
+      @router_name = options[:router_name]
 
       default_failure_app(options)
       default_controllers(options)

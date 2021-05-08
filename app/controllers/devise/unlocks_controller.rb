@@ -1,5 +1,7 @@
+# frozen_string_literal: true
+
 class Devise::UnlocksController < DeviseController
-  prepend_before_filter :require_no_authentication
+  prepend_before_action :require_no_authentication
 
   # GET /resource/unlock/new
   def new
@@ -24,7 +26,7 @@ class Devise::UnlocksController < DeviseController
     yield resource if block_given?
 
     if resource.errors.empty?
-      set_flash_message :notice, :unlocked if is_flashing_format?
+      set_flash_message! :notice, :unlocked
       respond_with_navigational(resource){ redirect_to after_unlock_path_for(resource) }
     else
       respond_with_navigational(resource.errors, status: :unprocessable_entity){ render :new }
@@ -43,4 +45,7 @@ class Devise::UnlocksController < DeviseController
       new_session_path(resource)  if is_navigational_format?
     end
 
+    def translation_scope
+      'devise.unlocks'
+    end
 end

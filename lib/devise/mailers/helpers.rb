@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Devise
   module Mailers
     module Helpers
@@ -5,15 +7,16 @@ module Devise
 
       included do
         include Devise::Controllers::ScopedViews
-        attr_reader :scope_name, :resource
       end
 
       protected
 
+      attr_reader :scope_name, :resource
+
       # Configure default email options
-      def devise_mail(record, action, opts={})
+      def devise_mail(record, action, opts = {}, &block)
         initialize_from_record(record)
-        mail headers_for(action, opts)
+        mail headers_for(action, opts), &block
       end
 
       def initialize_from_record(record)
@@ -64,7 +67,7 @@ module Devise
         template_path
       end
 
-      # Setup a subject doing an I18n lookup. At first, it attempts to set a subject
+      # Set up a subject doing an I18n lookup. At first, it attempts to set a subject
       # based on the current mapping:
       #
       #   en:

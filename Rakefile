@@ -1,5 +1,7 @@
 # encoding: UTF-8
-require "bundler/gem_tasks"
+# frozen_string_literal: true
+
+require 'bundler/gem_tasks'
 require 'rake/testtask'
 require 'rdoc/task'
 

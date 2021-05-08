@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'test_helper'
 
 class ConfirmationInstructionsTest < ActionMailer::TestCase
@@ -29,7 +31,7 @@ class ConfirmationInstructionsTest < ActionMailer::TestCase
   end
 
   test 'content type should be set to html' do
-    assert mail.content_type.include?('text/html')
+    assert_includes mail.content_type, 'text/html'
   end
 
   test 'send confirmation instructions to the user email' do
@@ -37,16 +39,16 @@ class ConfirmationInstructionsTest < ActionMailer::TestCase
     assert_equal [user.email], mail.to
   end
 
-  test 'setup sender from configuration' do
+  test 'set up sender from configuration' do
     assert_equal ['test@example.com'], mail.from
   end
 
-  test 'setup sender from custom mailer defaults' do
+  test 'set up sender from custom mailer defaults' do
     Devise.mailer = 'Users::Mailer'
     assert_equal ['custom@example.com'], mail.from
   end
 
-  test 'setup sender from custom mailer defaults with proc' do
+  test 'set up sender from custom mailer defaults with proc' do
     Devise.mailer = 'Users::FromProcMailer'
     assert_equal ['custom@example.com'], mail.from
   end
@@ -56,17 +58,17 @@ class ConfirmationInstructionsTest < ActionMailer::TestCase
     assert_present mail.body.encoded
   end
 
-  test 'setup reply to as copy from sender' do
+  test 'set up reply to as copy from sender' do
     assert_equal ['test@example.com'], mail.reply_to
   end
 
-  test 'setup reply to as different if set in defaults' do
+  test 'set up reply to as different if set in defaults' do
     Devise.mailer = 'Users::ReplyToMailer'
     assert_equal ['custom@example.com'], mail.from
     assert_equal ['custom_reply_to@example.com'], mail.reply_to
   end
 
-  test 'setup subject from I18n' do
+  test 'set up subject from I18n' do
     store_translations :en, devise: { mailer: { confirmation_instructions: { subject: 'Account Confirmation' } } } do
       assert_equal 'Account Confirmation', mail.subject
     end
@@ -86,7 +88,7 @@ class ConfirmationInstructionsTest < ActionMailer::TestCase
     host, port = ActionMailer::Base.default_url_options.values_at :host, :port
 
     if mail.body.encoded =~ %r{<a href=\"http://#{host}:#{port}/users/confirmation\?confirmation_token=([^"]+)">}
-      assert_equal Devise.token_generator.digest(user.class, :confirmation_token, $1), user.confirmation_token
+      assert_equal user.confirmation_token, $1
     else
       flunk "expected confirmation url regex to match"
     end

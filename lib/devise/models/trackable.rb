@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'devise/hooks/trackable'
 
 module Devise
@@ -15,21 +17,35 @@ module Devise
         [:current_sign_in_at, :current_sign_in_ip, :last_sign_in_at, :last_sign_in_ip, :sign_in_count]
       end
 
-      def update_tracked_fields!(request)
+      def update_tracked_fields(request)
         old_current, new_current = self.current_sign_in_at, Time.now.utc
         self.last_sign_in_at     = old_current || new_current
         self.current_sign_in_at  = new_current
 
-        old_current, new_current = self.current_sign_in_ip, request.remote_ip
+        old_current, new_current = self.current_sign_in_ip, extract_ip_from(request)
         self.last_sign_in_ip     = old_current || new_current
         self.current_sign_in_ip  = new_current
 
         self.sign_in_count ||= 0
         self.sign_in_count += 1
-
-        save(validate: false) or raise "Devise trackable could not save #{inspect}." \
-          "Please make sure a model using trackable can be saved at sign in."
       end
+
+      def update_tracked_fields!(request)
+        # We have to check if the user is already persisted before running
+        # `save` here because invalid users can be saved if we don't.
+        # See https://github.com/heartcombo/devise/issues/4673 for more details.
+        return if new_record?
+
+        update_tracked_fields(request)
+        save(validate: false)
+      end
+
+      protected
+
+      def extract_ip_from(request)
+        request.remote_ip
+      end
+
     end
   end
 end
